@@ -1,6 +1,6 @@
 #include <Adafruit_NeoPixel.h>
 #include <MIDI.h>
-#include <MozziGuts.h>
+// #include <MozziGuts.h>
 #include <Metronome.h>
 #include <Oscil.h>                // oscillator template
 #include <tables/sin2048_int8.h>  // sine table for oscillator
@@ -10,16 +10,17 @@
 // Input knob stuff
 const uint8_t KNOBCLOCK = 2;
 const uint8_t KNOBDATA = 3;
-const uint8_t KNOBPUSH = 5;
+const uint8_t KNOBPUSH = 4;
 uint8_t encoderPosCount = 0;
 uint8_t knobClockLast;
 uint8_t clockVal;
 boolean bCW;
 unsigned long lastKnobPush = 0;
+// const uint8_t VOLUME = 0;
 
 // Neopixel stuff
 #define NEOPIXELPIN 6  // On Trinket or Gemma, suggest changing this to 1
-#define NUMPIXELS 40   // Neopixel Shield Size
+#define NUMPIXELS 64   // Neopixel Shield Size
 
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXELPIN, NEO_GRB + NEO_KHZ800);
 
@@ -28,16 +29,19 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXELPIN, NEO_GRB + NEO_KHZ800);
 MIDI_CREATE_DEFAULT_INSTANCE();
 
 // use #define for CONTROL_RATE, not a constant
-#define CONTROL_RATE 128  // Hz, powers of 2 are most reliable
+// #define CONTROL_RATE 128  // Hz, powers of 2 are most reliable
 
 // audio sinewave oscillator
-Oscil<SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
+// Oscil<SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
 
 // envelope generator
-ADSR<CONTROL_RATE, AUDIO_RATE> envelope;
+// ADSR<CONTROL_RATE, AUDIO_RATE> envelope;
 
 // metronome
-Metronome kMetro(60000 / 400);
+Metronome kMetro(60000 / 120);
+
+// to convey the volume level from updateControl() to updateAudio()
+// byte volume;
 
 #define LED 13  // shows if MIDI is being recieved
 
@@ -98,10 +102,10 @@ void updateEncoder() {
     }
 
     // Only update the sequence if we have a change
-    Serial.print("Encoder Position: ");
-    Serial.println(encoderPosCount);
-    Serial.print("sequence[editStep]: ");
-    Serial.println(sequence[editStep]);
+    // Serial.print("Encoder Position: ");
+    // Serial.println(encoderPosCount);
+    // Serial.print("sequence[editStep]: ");
+    // Serial.println(sequence[editStep]);
   }
 
   knobClockLast = clockVal;  // Make sure this stays outside of the change checking conditional above
@@ -139,13 +143,13 @@ void setup() {
   pinMode(LED, OUTPUT);
 
   // Connect the HandleNoteOn function to the library, so it is called upon reception of a NoteOn.
-  MIDI.setHandleNoteOn(HandleNoteOn);    // Put only the name of the function
-  MIDI.setHandleNoteOff(HandleNoteOff);  // Put only the name of the function
+  // MIDI.setHandleNoteOn(HandleNoteOn);    // Put only the name of the function
+  // MIDI.setHandleNoteOff(HandleNoteOff);  // Put only the name of the function
   // Initiate MIDI communications, listen to all channels (not needed with Teensy usbMIDI)
-  MIDI.begin(MIDI_CHANNEL_OMNI);
+  // MIDI.begin(MIDI_CHANNEL_OMNI);
 
-  envelope.setADLevels(255, 64);
-  envelope.setTimes(50, 200, 10000, 200);  // 10000 is so the note will sustain 10 seconds unless a noteOff comes
+  // envelope.setADLevels(255, 64);
+  // envelope.setTimes(50, 200, 10000, 200);  // 10000 is so the note will sustain 10 seconds unless a noteOff comes
 
   aSin.setFreq(440);  // default frequency
 
@@ -158,7 +162,7 @@ void setup() {
   // attachInterrupt(0, updateEncoder, CHANGE); // pin 2
   // attachInterrupt(1, updateEncoder, CHANGE); // pin 3
 
-  Serial.begin(9600);
+  // Serial.begin(9600);
 }
 
 // Update
@@ -166,6 +170,12 @@ void setup() {
 void updateControl() {
   pixels.clear();  // Set all pixel colors to 'off'
   MIDI.read();
+
+  // read the variable resistor for volume
+  int sensor_value = mozziAnalogRead(VOLUME); // value is 0-1023
+
+  // map it to an 8 bit range for efficient calculations in updateAudio
+  volume = map(sensor_value, 0, 1023, 0, 255);
 
   updateEncoder();
 
@@ -180,9 +190,9 @@ void updateControl() {
     pixels.setPixelColor(step + 16, pixels.Color(0, 0, 3));
     pixels.setPixelColor(step + 24, pixels.Color(0, 0, 3));
     pixels.setPixelColor(step + 32, pixels.Color(0, 0, 3));
-    // pixels.setPixelColor(step + 15, pixels.Color(0, 0, 10)); // Leaving these out because I'm testing a smaller grid than I would build the actual synth with
-    // pixels.setPixelColor(step + 23, pixels.Color(0, 0, 10));
-    // pixels.setPixelColor(step + 31, pixels.Color(0, 0, 10));
+    pixels.setPixelColor(step + 40, pixels.Color(0, 0, 3)); // Leaving these out because I'm testing a smaller grid than I would build the actual synth with
+    pixels.setPixelColor(step + 48, pixels.Color(0, 0, 3));
+    pixels.setPixelColor(step + 56, pixels.Color(0, 0, 3));
 
     // Draw the note sequence
     for (byte i = 0; i < steps; i++) {
@@ -204,10 +214,12 @@ void updateControl() {
   }
 
   envelope.update();
+  envelope.next();
 }
 
 AudioOutput_t updateAudio() {
-  return MonoOutput::from16Bit(envelope.next() * aSin.next());
+  // return MonoOutput::from16Bit((envelope.next() * volume) * aSin.next());
+  return MonoOutput::from16Bit((int)aSin.next() * volume); // 8 bit * 8 bit gives 16 bits value
 }
 
 // Loop
