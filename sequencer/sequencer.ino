@@ -41,7 +41,7 @@ byte steps = 8;
 byte step = 0;
 byte editStep = 0;
 
-byte octave = 4
+byte octave = 4;
 
 // Keys
 byte aMaj[] = {
